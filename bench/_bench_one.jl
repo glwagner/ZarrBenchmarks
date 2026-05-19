@@ -28,8 +28,9 @@ w = Workload(Nx, Ny, Nz, Nt, chunk, codec, codec_level(codec))
 total = total_bytes(w)
 tmp = mktempdir()
 
-buf = Array{Float32}(undef, Nx, Ny, Nz)
-gen_data!(buf, 0)
+# Pre-generate per-timestep data outside the timed loop (see bench_sequential.jl
+# for the rationale — the field generator is too expensive to leave inside).
+buf_per_step = [gen_data!(Array{Float32}(undef, Nx, Ny, Nz), t) for t in 1:Nt]
 
 write_secs = Float64[]
 read_secs  = Float64[]
@@ -43,26 +44,26 @@ for r in 0:repeats   # r = 0 is warm-up
     twrite = @elapsed begin
         if backend == "mmap"
             h = mmap_open_write(w, target)
-            for t in 1:Nt; gen_data!(buf, t); mmap_write_step!(h, buf, t); end
+            for t in 1:Nt; mmap_write_step!(h, buf_per_step[t], t); end
             mmap_close_write(h)
         elseif backend == "raw"
             h = rawio_open_write(w, target)
-            for t in 1:Nt; gen_data!(buf, t); rawio_write_step!(h, buf, t); end
+            for t in 1:Nt; rawio_write_step!(h, buf_per_step[t], t); end
             rawio_close_write(h)
         elseif backend == "zarrjl"
             h = zarrjl_open_write(w, target)
-            for t in 1:Nt; gen_data!(buf, t); zarrjl_write_step!(h, buf, t); end
+            for t in 1:Nt; zarrjl_write_step!(h, buf_per_step[t], t); end
             zarrjl_close_write(h)
         elseif backend == "zarrsjl"
             h = zarrsjl_open_write(w, target)
-            for t in 1:Nt; gen_data!(buf, t); zarrsjl_write_step!(h, buf, t); end
+            for t in 1:Nt; zarrsjl_write_step!(h, buf_per_step[t], t); end
             zarrsjl_close_write(h)
         else
             error("unknown backend: $backend")
         end
     end
 
-    outbuf = similar(buf)
+    outbuf = Array{Float32}(undef, Nx, Ny, Nz)
     tread = @elapsed begin
         if backend == "mmap"
             hr = mmap_open_read(w, target);

@@ -109,8 +109,14 @@ function run_config(backend::String, w::Workload, store_path::AbstractString;
     read_secs  = Float64[]
     on_disk    = 0
 
-    buf = Array{Float32}(undef, w.Nx, w.Ny, w.Nz)
-    gen_data!(buf, 0)   # warm-up the cache lines
+    # Generate the per-timestep data ONCE, outside the timed loop. The
+    # smoothed/bitrounded field generator is expensive (~80–2000 ms for
+    # the larger configs) and would otherwise dominate over the actual
+    # I/O work for the mmap/raw baselines. Each timestep gets a distinct
+    # buffer so cross-chunk compressibility is realistic (a compressor
+    # given Nt identical chunks would just compress the first and free-
+    # ride on the rest).
+    buf_per_step = [gen_data!(Array{Float32}(undef, w.Nx, w.Ny, w.Nz), t) for t in 1:w.Nt]
 
     # One warm-up + `repeats` timed runs. Each run uses a fresh path.
     nruns_total = 1 + repeats
@@ -126,29 +132,25 @@ function run_config(backend::String, w::Workload, store_path::AbstractString;
             if backend == "mmap"
                 h = mmap_open_write(w, target)
                 for t in 1:w.Nt
-                    gen_data!(buf, t)
-                    mmap_write_step!(h, buf, t)
+                    mmap_write_step!(h, buf_per_step[t], t)
                 end
                 mmap_close_write(h)
             elseif backend == "raw"
                 h = rawio_open_write(w, target)
                 for t in 1:w.Nt
-                    gen_data!(buf, t)
-                    rawio_write_step!(h, buf, t)
+                    rawio_write_step!(h, buf_per_step[t], t)
                 end
                 rawio_close_write(h)
             elseif backend == "zarrjl"
                 h = zarrjl_open_write(w, target)
                 for t in 1:w.Nt
-                    gen_data!(buf, t)
-                    zarrjl_write_step!(h, buf, t)
+                    zarrjl_write_step!(h, buf_per_step[t], t)
                 end
                 zarrjl_close_write(h)
             elseif backend == "zarrsjl"
                 h = zarrsjl_open_write(w, target)
                 for t in 1:w.Nt
-                    gen_data!(buf, t)
-                    zarrsjl_write_step!(h, buf, t)
+                    zarrsjl_write_step!(h, buf_per_step[t], t)
                 end
                 zarrsjl_close_write(h)
             else
@@ -162,7 +164,7 @@ function run_config(backend::String, w::Workload, store_path::AbstractString;
         end
 
         # ---- read ----
-        outbuf = similar(buf)
+        outbuf = Array{Float32}(undef, w.Nx, w.Ny, w.Nz)
         # Re-open as a fresh process-level handle for the read pass.
         tread = @elapsed begin
             if backend == "mmap"

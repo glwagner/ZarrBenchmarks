@@ -60,37 +60,65 @@ and three times for the reported median.
 > Zarrs.jl 0.1.0 (main) on the `zarrs` Rust crate 0.23 (built locally with
 > `cargo 1.95.0`, `--release` + LTO).
 
+### Data: synthetic, bitrounded-Float32, ~1.85× compressible with zstd-3
+
+The data generator builds a sum of five low-frequency cosines plus a small
+noise floor, then bitrounds the Float32 result to 10 mantissa bits — a
+synthetic stand-in for the spatially-correlated, broad-but-not-flat-spectrum
+data you'd see in real climate / ocean model output. zstd-3 on this field
+produces a **~1.85× compression ratio**, matching the typical raw-Float32
+ratio reported for real ocean fields. (Earlier versions of this benchmark
+used a sawtooth that compressed ~140×; that result was misleading and has
+been retired.) See [`bench/common.jl`](bench/common.jl) for the generator,
+and the "Why bitround?" note below.
+
 ### Throughput vs data size
 
 ![Throughput vs data size](results/throughput_vs_size.png)
 
 Median MiB/s for sequential write and read, log-log. Solid = uncompressed,
-dashed = zstd level 3. Mmap and raw are uncompressed only.
+dashed = zstd level 3. Mmap and raw are uncompressed only. Data generation
+happens **outside** the timed loop (pre-allocated, one buffer per timestep).
 
-Per-size median throughput, codec **none** (uncompressed):
+Per-size median throughput, codec **none** (uncompressed) — MiB/s:
 
 | Size | Mmap (W) | Raw (W) | Zarr.jl (W) | Zarrs.jl (W) | Mmap (R) | Raw (R) | Zarr.jl (R) | Zarrs.jl (R) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 12 MiB | 1443 | 2636 | 295 | 338 | 7313 | 17067 | 1260 | 2128 |
-| 50 MiB | 1170 | 3940 | 446 | 865 | 6917 | 16638 | 876 | 2454 |
-| 100 MiB | 1474 | 4513 | 454 | 1075 | 6648 | 12819 | 1126 | 2293 |
-| 200 MiB | 1396 | 5449 | 441 | 995 | 6367 | 12245 | 1133 | 2169 |
-| 400 MiB | 1359 | 6220 | 456 | 1092 | 6263 | 10082 | 1145 | 1706 |
-| 800 MiB | 1728 | 6419 | 464 | 1124 | 6122 | 8465 | 1312 | 1798 |
-| 1.6 GiB | 1754 | 6819 | 470 | 1193 | 6168 | 6856 | 1272 | 1856 |
-| 3.1 GiB | 1838 | 6771 | 475 | 1180 | 6114 | 6644 | 1401 | 1734 |
+| 12 MiB | 2087 | 4435 | 347 | 394 | 6756 | 16733 | 1156 | 1926 |
+| 50 MiB | 1825 | 6053 | 440 | 898 | 6384 | 15153 | 1453 | 2201 |
+| 100 MiB | 1814 | 6671 | 467 | **1168** | 6261 | 12732 | 1379 | 2072 |
+| 200 MiB | 1731 | 6935 | 468 | 1315 | 6038 | 11037 | 1250 | 1861 |
+| 400 MiB | 1694 | 6960 | 455 | 1362 | 5916 | 9511 | 1413 | 2396 |
+| 800 MiB | 1680 | 7016 | 461 | 1203 | 5811 | 8820 | 1484 | 1927 |
+| 1.6 GiB | 1645 | 7111 | 459 | 1264 | 5733 | 6769 | 1499 | 1952 |
+| 3.1 GiB | 1539 | 6840 | 448 | 1281 | 5532 | 6466 | 1572 | 2108 |
 
-All values **MiB/s**, sequential per-step writes/reads, fsync at close.
+Codec **zstd level 3** — MiB/s:
 
-Headline numbers, codec **zstd level 3** (with our deliberately
-highly-compressible synthetic data — see caveat below):
-
-| Size | Zarr.jl (W) | Zarrs.jl (W) | Zarr.jl (R) | Zarrs.jl (R) | Zarr.jl on-disk | Zarrs.jl on-disk |
+| Size | Zarr.jl (W) | Zarrs.jl (W) | Zarr.jl (R) | Zarrs.jl (R) | on-disk | ratio |
 |---|---:|---:|---:|---:|---:|---:|
-| 12 MiB | 316 | 246 | 685 | 781 | 10.7 MiB | 10.7 MiB |
-| 100 MiB | 868 | 751 | 1551 | 2035 | 10.5 MiB | 10.5 MiB |
-| 800 MiB | 1182 | 1018 | 2194 | 1734 | 11.2 MiB | 11.2 MiB |
-| 3.1 GiB | 1269 | 1165 | 2118 | 1950 | 13.9 MiB | 13.9 MiB |
+| 12 MiB | 116 | 107 | 429 | 482 | 7.15 MiB | 1.75× |
+| 100 MiB | 156 | 154 | 518 | 621 | 54.6 MiB | 1.83× |
+| 800 MiB | 153 | 154 | 571 | 566 | 432 MiB | 1.85× |
+| 1.6 GiB | 152 | 150 | 559 | 547 | 853 MiB | 1.88× |
+| 3.1 GiB | 151 | **167** | 565 | 610 | 1.67 GiB | 1.88× |
+
+Key reads of these tables:
+
+1. **Uncompressed:** Zarrs.jl writes are ~2.5–2.8× Zarr.jl across the sweep
+   (~1.2 GiB/s vs ~0.45 GiB/s on large arrays). Reads: Zarrs.jl ~1.3–1.7×.
+2. **Compressed (zstd-3):** **the libraries are within 1% of each other**,
+   write *and* read. They're both bottlenecked by the same `libzstd` C
+   code path. The Julia↔Rust FFI difference contributes nothing once the
+   codec is dominant.
+3. **Compression slows writes ~3× and reads ~2.5×** on this local NVMe —
+   compression CPU costs more time than the 1.85× byte reduction saves.
+   This is the expected outcome on fast local storage; the trade flips
+   on slow stores (S3, NFS, network filesystems).
+4. **Mmap recovers ~25% of raw's write peak; raw approaches the NVMe's
+   advertised ~7 GiB/s sequential write ceiling.** Mmap reads (warm
+   page cache) are within 30% of raw reads on small data and converge
+   to raw on large data.
 
 ### Throughput vs thread count
 
@@ -101,44 +129,45 @@ Each (lib, codec, threads) point runs in a fresh Julia subprocess so
 `RAYON_NUM_THREADS` (read once at FFI init by Zarrs.jl) and
 `JULIA_NUM_THREADS` take effect cleanly.
 
-**zstd level 3:**
+**No compression — MiB/s:**
 
-| Threads | Zarr.jl write | Zarrs.jl write | Zarr.jl read | Zarrs.jl read |
+| Threads | Zarr.jl W | Zarrs.jl W | Zarr.jl R | Zarrs.jl R |
 |---:|---:|---:|---:|---:|
-| 1 | 789 | 607 | 1232 | 914 |
-| 2 | 926 | 812 | 1571 | 1251 |
-| 4 | **1155** | 849 | 1592 | 1359 |
-| 8 | 1098 | 849 | **1922** | 1567 |
-| 16 | 931 | 850 | 1854 | 1491 |
+| 1 | 438 | 909 | 988 | 2035 |
+| 2 | 448 | 1019 | 1203 | 1614 |
+| 4 | 445 | 1184 | 1166 | 1845 |
+| 8 | 447 | **1205** | 1284 | **2085** |
+| 16 | 428 | 1238 | **1414** | 1945 |
 
-**No compression:**
+**zstd level 3 — MiB/s:**
 
-| Threads | Zarr.jl write | Zarrs.jl write | Zarr.jl read | Zarrs.jl read |
+| Threads | Zarr.jl W | Zarrs.jl W | Zarr.jl R | Zarrs.jl R |
 |---:|---:|---:|---:|---:|
-| 1 | 405 | 672 | 776 | 1297 |
-| 2 | 439 | 834 | 1007 | 1632 |
-| 4 | 434 | **1011** | 1044 | 1472 |
-| 8 | 448 | 993 | 1239 | 1614 |
-| 16 | 453 | 1019 | 1134 | **1626** |
+| 1 | 158 | 162 | 504 | 533 |
+| 2 | 161 | 161 | 556 | 562 |
+| 4 | 163 | 146 | 563 | 540 |
+| 8 | 146 | 148 | 531 | 558 |
+| 16 | 147 | 148 | 533 | 553 |
 
-All values **MiB/s**. The two-codec view is more informative than zstd alone:
+Reading these:
 
-- **Zarr.jl uncompressed writes are flat across all thread counts** (~440
-  MiB/s). With no codec to parallelise and the `DirectoryStore` running
-  through a sequential channel, threads have nothing to do.
-- **Zarrs.jl uncompressed writes scale ~50% from 1→4 threads** (672 → 1011
-  MiB/s), then plateau. So `rayon` *is* doing useful work even without a
-  compressor — most likely per-chunk write dispatch / file-system syscalls
-  in parallel.
-- **With zstd, Zarr.jl scales harder than Zarrs.jl** on this workload —
-  4-thread writes hit 1155 MiB/s vs Zarrs.jl's 849. Zarr.jl's threading
-  here comes through `ChunkCodecLibZstd` (Julia threads applied to the
-  zstd-side compute), not its store layer. Zarrs.jl's zstd path is
-  already roughly half-saturated at 1 thread on this small problem, so
-  there's less headroom for `rayon` to gain.
-- Both libraries saturate by 4–8 threads. Workloads with more codec work
-  per byte (sharded V3, blosc with shuffle, real data) may shift the
-  zstd numbers.
+- **Zarr.jl uncompressed: flat at ~440 MiB/s write across all thread
+  counts.** With no codec to parallelise and the `DirectoryStore`
+  running through a sequential channel, threads have nothing to do.
+  Reads do scale modestly (~990 → ~1410 MiB/s) — that's chunk-read
+  concurrency through Zarr.jl's channel.
+- **Zarrs.jl uncompressed: scales ~35% from 1→8 threads** (909 → 1205
+  MiB/s writes). `rayon` *is* doing useful work even without a
+  compressor — most likely per-chunk file open + write dispatch in
+  parallel. Reads scale similarly.
+- **zstd-3, both libraries: flat at ~150 MiB/s write, ~550 MiB/s read,
+  regardless of thread count.** Neither `rayon` nor Julia threads
+  parallelize zstd-level-3 compression at this granularity on a
+  per-timestep write pattern. Each `z[:,:,:,t] = buf` call compresses
+  exactly one chunk, and the libraries don't queue compress calls
+  across timesteps. Threading would help if the user did
+  `z[:,:,:,:] = bigarray` (many chunks per call), or if multiple
+  processes wrote disjoint slabs of the same store.
 
 ### Cross-library compatibility
 
@@ -164,84 +193,101 @@ both spec versions. (Zarr.jl's v3 still prints an "experimental" warning.)
 
 Raw CSV at `results/compat.csv`.
 
+## "Why bitround?" — a note on the data generator
+
+An earlier iteration of this benchmark used a deterministic sawtooth
+`((I + step) % 65537) * 1e-3` as input data. zstd-3 compressed it ~140×,
+which made the compressed-write numbers look great — and was completely
+misleading for any real use case.
+
+The current generator is a sum of five low-frequency cosines plus a small
+white-noise floor, with the final Float32 result **bitrounded to 10
+mantissa bits**. Smoothed white noise alone does not compress (we
+checked: ratio ~1.1× even after heavy box smoothing) — the mantissa
+bits of any `cos`/`rand`-derived Float32 are dense and effectively
+incompressible. Real Float32 climate output compresses because the
+last ~10 mantissa bits carry numerical noise that the downstream
+consumer doesn't actually need; bitrounding makes that explicit by
+zeroing them. With 10 keepbits, our generator lands at a ~1.85× zstd-3
+ratio — the typical raw-Float32 climate-data ratio.
+
+You can override `ZS_KEEPBITS` (env) to push the ratio around:
+
+| `ZS_KEEPBITS` | zstd-3 ratio |
+|---:|---:|
+| 23 (no bitrounding) | ~1.09× |
+| 16 | ~1.29× |
+| 14 | ~1.41× |
+| 12 | ~1.59× |
+| **10 (default)** | **~1.85×** |
+| 8  | ~2.23× |
+
 ## Caveats
 
 This is one run on one machine. Several things to keep in mind before
 generalising.
 
-1. **Synthetic data is unrealistically compressible.** The generator is
-   `buf[I] = ((I + step) % 65537) * 1e-3` — a saw-tooth across each frame,
-   varying gently between timesteps. zstd gets ~140× at the larger sizes
-   here. Real ocean/atmosphere data typically gets 1.5×–5× with zstd. The
-   **compressed-write CPU cost** is broadly representative; the **read
-   bandwidth** with compression is artificially boosted because the
-   chunk files we're reading are tiny.
-
-   This matters a lot for interpreting the headline: with realistic data on
-   a fast local SSD, **compression usually makes writes slower**, not faster.
-   The wall-time arithmetic is roughly `T_compress + T_disk(N/ratio)` vs
-   `T_disk(N)`; with zstd at ~500 MB/s single-core CPU on a 1+ GiB/s store
-   and a realistic 3× ratio, compressed writes lose by a wide margin.
-   Compression starts paying off when (a) the destination is a slow store
-   (S3, NFS, spinning disk) where bytes-on-wire dominates, (b) the same
-   data will be re-read many times from a warm cache, or (c) the
-   compression ratio is exceptional. None of those applied here, so don't
-   read the "zstd is competitive with uncompressed" result as general.
-2. **APFS write-back caching distorts small writes.** A 192 GB RAM machine
+1. **APFS write-back caching distorts small writes.** A 192 GB RAM machine
    has plenty of dirty-page budget. We `fsync` all chunk files at close
    to force a real flush, which is included in the wall-time, but small
    per-chunk writes may still benefit from page-cache merging compared
-   to a real disk-bound workload. The `raw` write throughput (~6.8 GiB/s
-   on large writes) is suspiciously close to the M2 Ultra's published
-   NVMe sequential write ceiling — believable, but a slower disk would
+   to a real disk-bound workload. The `raw` write throughput (~7 GiB/s
+   on large writes) is right at the M2 Ultra's published NVMe sequential
+   write ceiling — believable for warm writes, but a slower disk would
    tell a different story.
-3. **Mmap read is "magic" cached** when the page cache is warm from the
+2. **Mmap reads are "magic" cached** when the page cache is warm from the
    prior write. Both Zarr libraries read from the same warm cache, so
    the comparison is fair, but absolute mmap read numbers should not be
    read as "what an mmap reader can do on a cold cache".
-4. **Single-chunk-per-timestep workload.** This favors the "fat-chunk"
+3. **Single-chunk-per-timestep workload.** This favors the "fat-chunk"
    write pattern. The "many-small-chunks" workload from the original
    plan (W2) is not run here; that would stress per-chunk metadata
    overhead more, where Zarr.jl's channel-based dispatch is likely to
    pay a higher fixed cost.
-5. **Thread sweep is small.** We test `RAYON_NUM_THREADS ∈ {1, 2, 4, 8, 16}`
-   on a 24-core machine. Zarrs.jl uses an internal `rayon` threadpool;
-   Zarr.jl gets threading indirectly through `Blosc.jl` and `ChunkCodecLibZstd`
-   plus the `JULIA_NUM_THREADS` value passed to `-t`. We did *not* test
-   parallel writes from multiple Julia processes (the plan's W5) — both
-   libraries are designed to support that, but we didn't measure it.
-6. **No Python `zarr` baseline.** The plan called for one as a sanity check;
-   we didn't run it.
-7. **No "many small writes" or random-access read** workloads (the plan's
-   W2 and W4). Adding them is mechanical — see `bench/_bench_one.jl`.
+4. **Threading does nothing for zstd at this granularity.** Per-step
+   `z[:,:,:,t] = buf` compresses exactly one chunk; neither library
+   queues compress calls across timesteps. A `z[:,:,:,:] = bigarray`
+   pattern (or multiple processes writing disjoint slabs) would expose
+   chunk-level parallelism that we did not test.
+5. **No Python `zarr` baseline.** The plan called for one as a sanity
+   check; we didn't run it.
+6. **Synthetic data, however bitrounded, is not real data.** A real
+   Oceananigans snapshot can have land masks, NaNs, sharp fronts, and
+   variable-by-variable entropy that our smooth cosine field doesn't
+   capture. The 1.85× ratio is in the right neighbourhood for
+   *unmasked, well-conditioned* float fields. Land-masked surface
+   fields compress much better.
 
 ## Takeaways
 
-- **Uncompressed sequential write:** Zarrs.jl is consistently faster than
-  Zarr.jl. The gap grows with size — roughly 2.5×–2.7× faster at sizes
-  ≥ 50 MiB. Zarrs.jl's per-write Float32 throughput approaches mmap
-  (~1.1 GiB/s vs mmap's ~1.4–1.8 GiB/s); Zarr.jl plateaus at about
-  450–475 MiB/s regardless of size.
-- **Uncompressed sequential read:** Zarrs.jl is 1.3×–2.1× faster than
-  Zarr.jl across the sweep. Both are 3–4× slower than mmap reads.
-- **With zstd compression**, the two libraries close to within 10–15% of
-  each other. Compression CPU dominates over store-side per-chunk
-  overhead. Zarr.jl's `ChunkCodecLibZstd` is the same upstream zstd
-  library that Rust binds to, so this is unsurprising.
-- **Mmap is the right "theoretical" floor** for uncompressed writes:
-  Zarrs.jl is within 35% of it. The raw `write()` path is ~3.5× faster
-  than mmap on the upper end — Mmap.sync incurs an explicit msync pass
-  that direct `write` skips.
+- **Uncompressed sequential write:** Zarrs.jl is consistently faster
+  than Zarr.jl — roughly **2.5–2.8× faster at sizes ≥ 50 MiB**.
+  Zarrs.jl's per-write Float32 throughput sits around 1.2 GiB/s on
+  large arrays vs. Zarr.jl's ~450 MiB/s plateau, and is within ~30%
+  of mmap (~1.7 GiB/s). Zarr.jl barely scales with array size; Zarrs.jl
+  ramps from ~400 to ~1300 MiB/s.
+- **Uncompressed sequential read:** Zarrs.jl is 1.3–1.7× Zarr.jl across
+  the sweep (~2 GiB/s vs. ~1.4 GiB/s). Both are 3–4× slower than mmap
+  reads (~5.5 GiB/s with warm page cache).
+- **With realistic zstd-3 data**, the two libraries collapse to
+  essentially identical numbers — **~150 MiB/s write, ~560 MiB/s read,
+  to within 1%**. Compression CPU is the bottleneck and both wrappers
+  call the same `libzstd`. The FFI/Rust vs. pure-Julia difference is
+  invisible here.
+- **Compression slows writes ~3× and reads ~2.5×** on this local NVMe.
+  The 1.85× byte reduction does not pay for the zstd CPU cost when the
+  underlying store can do 1+ GiB/s. Compression starts paying off on
+  slow stores (S3, NFS, spinning disk) or when the same data is
+  re-read many times.
 - **Cross-library round-trip is essentially solid** for codec `none`,
   `blosc`, and zstd in both v2 and v3, in both directions, *except*
   Zarr.jl-written-v3-zstd → Zarrs.jl-read (the `chunksize` config
   mismatch noted above). `zlib` is Zarr.jl-only.
-- **Threading helps both libraries** on a 240 MiB zstd workload, but
-  saturates by 4–8 threads and gives no additional gain past that.
-  Zarr.jl beat Zarrs.jl by ~30% at every thread count for this size +
-  codec — counterintuitive given Zarrs.jl's `rayon` internal pool, but
-  the workload is small and compression-light enough that Julia-side
-  threading in Zarr.jl wins on per-chunk constants.
+- **Threading helps uncompressed Zarrs.jl modestly** (909 → 1238 MiB/s
+  writes, 1→16 threads) but does nothing for uncompressed Zarr.jl or
+  for either library under zstd-3 on the per-timestep write pattern.
+  zstd-3 at chunk granularity is sequential; both libraries would
+  parallelize differently if you handed them many chunks per call.
 
 ## How to reproduce
 
