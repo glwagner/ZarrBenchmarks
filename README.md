@@ -96,26 +96,49 @@ highly-compressible synthetic data — see caveat below):
 
 ![Throughput vs thread count](results/throughput_vs_threads.png)
 
-240 MiB workload (`256×256×32×30` Float32), zstd level 3.
-Each (lib, threads) pair runs in a fresh Julia subprocess so
+240 MiB workload (`256×256×32×30` Float32), swept over two codecs.
+Each (lib, codec, threads) point runs in a fresh Julia subprocess so
 `RAYON_NUM_THREADS` (read once at FFI init by Zarrs.jl) and
 `JULIA_NUM_THREADS` take effect cleanly.
+
+**zstd level 3:**
 
 | Threads | Zarr.jl write | Zarrs.jl write | Zarr.jl read | Zarrs.jl read |
 |---:|---:|---:|---:|---:|
 | 1 | 789 | 607 | 1232 | 914 |
 | 2 | 926 | 812 | 1571 | 1251 |
-| 4 | 1155 | 849 | 1592 | 1359 |
-| 8 | 1098 | 849 | 1922 | 1567 |
+| 4 | **1155** | 849 | 1592 | 1359 |
+| 8 | 1098 | 849 | **1922** | 1567 |
 | 16 | 931 | 850 | 1854 | 1491 |
 
-All values **MiB/s**. Note Zarrs.jl plateaus by 4 threads while Zarr.jl
-benefits a little further out to 8 threads. We did not see Zarrs.jl
-pull ahead at any thread count for this workload — probably because
-zstd-level-3 on highly-compressible data isn't compute-bound enough
-for `rayon`'s per-chunk parallelism to dominate the FFI/store-handle
-constants. Workloads with more codec work per byte (sharded V3, blosc
-with shuffle, real data) may shift this.
+**No compression:**
+
+| Threads | Zarr.jl write | Zarrs.jl write | Zarr.jl read | Zarrs.jl read |
+|---:|---:|---:|---:|---:|
+| 1 | 405 | 672 | 776 | 1297 |
+| 2 | 439 | 834 | 1007 | 1632 |
+| 4 | 434 | **1011** | 1044 | 1472 |
+| 8 | 448 | 993 | 1239 | 1614 |
+| 16 | 453 | 1019 | 1134 | **1626** |
+
+All values **MiB/s**. The two-codec view is more informative than zstd alone:
+
+- **Zarr.jl uncompressed writes are flat across all thread counts** (~440
+  MiB/s). With no codec to parallelise and the `DirectoryStore` running
+  through a sequential channel, threads have nothing to do.
+- **Zarrs.jl uncompressed writes scale ~50% from 1→4 threads** (672 → 1011
+  MiB/s), then plateau. So `rayon` *is* doing useful work even without a
+  compressor — most likely per-chunk write dispatch / file-system syscalls
+  in parallel.
+- **With zstd, Zarr.jl scales harder than Zarrs.jl** on this workload —
+  4-thread writes hit 1155 MiB/s vs Zarrs.jl's 849. Zarr.jl's threading
+  here comes through `ChunkCodecLibZstd` (Julia threads applied to the
+  zstd-side compute), not its store layer. Zarrs.jl's zstd path is
+  already roughly half-saturated at 1 thread on this small problem, so
+  there's less headroom for `rayon` to gain.
+- Both libraries saturate by 4–8 threads. Workloads with more codec work
+  per byte (sharded V3, blosc with shuffle, real data) may shift the
+  zstd numbers.
 
 ### Cross-library compatibility
 

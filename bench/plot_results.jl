@@ -150,20 +150,20 @@ end
 # ---------------------------------------------------------------------------
 
 function plot_throughput_vs_threads(rows, outpath)
-    # x = rayon_threads (parse Int), y = MiB/s, lines per backend × (write/read)
-    fig = Figure(size=(1100, 480))
+    # x = rayon_threads, y = MiB/s, lines per (backend, codec).
+    fig = Figure(size=(1100, 520))
 
-    function group_by_backend(rows, metric)
-        out = Dict{String, Tuple{Vector{Int}, Vector{Float64}}}()
-        bag = Dict{Tuple{String,Int}, Vector{Float64}}()
+    function group_by_backend_codec(rows, metric)
+        out = Dict{Tuple{String,String}, Tuple{Vector{Int}, Vector{Float64}}}()
+        bag = Dict{Tuple{String,String,Int}, Vector{Float64}}()
         for r in rows
             nth = r["rayon_threads"]
             isempty(nth) && continue
-            key = (r["backend"], parse(Int, nth))
+            key = (r["backend"], r["codec"], parse(Int, nth))
             push!(get!(bag, key, Float64[]), parse(Float64, r[metric]))
         end
-        for ((b, nth), vs) in bag
-            t = get!(out, b, (Int[], Float64[]))
+        for ((b, c, nth), vs) in bag
+            t = get!(out, (b, c), (Int[], Float64[]))
             push!(t[1], nth)
             push!(t[2], median(vs))
         end
@@ -182,25 +182,31 @@ function plot_throughput_vs_threads(rows, outpath)
             ylabel = "MiB / s",
             xticks = (Int[], String[]),
         )
-        agg = group_by_backend(rows, metric)
+        agg = group_by_backend_codec(rows, metric)
         all_x = Int[]
-        for (backend, (xs, ys)) in agg
-            color = get(BACKEND_COLORS, backend, :black)
-            lines!(ax, xs, ys; color=color, linewidth=2.5,
-                   label=BACKEND_LABELS[backend])
-            scatter!(ax, xs, ys; color=color, markersize=8)
-            append!(all_x, xs)
+        for codec in ("none", "zstd", "blosc", "zlib")
+            for backend in ("zarrjl", "zarrsjl")
+                haskey(agg, (backend, codec)) || continue
+                xs, ys = agg[(backend, codec)]
+                isempty(xs) && continue
+                color = BACKEND_COLORS[backend]
+                ls = codec == "none" ? :solid : :dash
+                lines!(ax, xs, ys; color=color, linewidth=2.5, linestyle=ls,
+                       label="$(BACKEND_LABELS[backend]) ($codec)")
+                scatter!(ax, xs, ys; color=color, markersize=8)
+                append!(all_x, xs)
+            end
         end
         if !isempty(all_x)
             uniq = sort(unique(all_x))
             ax.xticks = (uniq, string.(uniq))
         end
         if col_idx == 2
-            axislegend(ax; position=:rb, labelsize=10)
+            axislegend(ax; position=:rb, labelsize=9, framevisible=true)
         end
     end
 
-    Label(fig[0, :], "Throughput vs thread count";
+    Label(fig[0, :], "Throughput vs thread count  (solid=uncompressed, dashed=zstd-3)";
           fontsize=15, halign=:center)
     save(outpath, fig)
     @info "wrote $outpath"
