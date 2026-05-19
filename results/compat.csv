@@ -1,0 +1,33 @@
+writer,reader,codec,zarr_format,status,detail
+zarrjl,zarrjl,none,2,pass,
+zarrjl,zarrsjl,none,2,pass,
+zarrsjl,zarrjl,none,2,pass,
+zarrsjl,zarrsjl,none,2,pass,
+zarrjl,zarrjl,none,3,pass,
+zarrjl,zarrsjl,none,3,pass,
+zarrsjl,zarrjl,none,3,pass,
+zarrsjl,zarrsjl,none,3,pass,
+zarrjl,zarrjl,zstd,2,pass,
+zarrjl,zarrsjl,zstd,2,pass,
+zarrsjl,zarrjl,zstd,2,pass,
+zarrsjl,zarrsjl,zstd,2,pass,
+zarrjl,zarrjl,zstd,3,pass,
+zarrjl,zarrsjl,zstd,3,read_fail,zarrs error (ZARRS_ERROR_ARRAY): configuration is unsupported: missing field `checksum`
+zarrsjl,zarrjl,zstd,3,pass,
+zarrsjl,zarrsjl,zstd,3,pass,
+zarrjl,zarrjl,blosc,2,pass,
+zarrjl,zarrsjl,blosc,2,pass,
+zarrsjl,zarrjl,blosc,2,pass,
+zarrsjl,zarrsjl,blosc,2,pass,
+zarrjl,zarrjl,blosc,3,pass,
+zarrjl,zarrsjl,blosc,3,pass,
+zarrsjl,zarrjl,blosc,3,pass,
+zarrsjl,zarrsjl,blosc,3,pass,
+zarrjl,zarrjl,zlib,2,pass,
+zarrjl,zarrsjl,zlib,2,read_fail,zarrs error (ZARRS_ERROR_ARRAY): unsupported Zarr V2 array: codec zlib is not supported
+zarrsjl,zarrjl,zlib,2,write_fail,zarrs error (ZARRS_ERROR_ARRAY): unsupported Zarr V2 array: codec zlib is not supported
+zarrsjl,zarrsjl,zlib,2,write_fail,zarrs error (ZARRS_ERROR_ARRAY): unsupported Zarr V2 array: codec zlib is not supported
+zarrjl,zarrjl,zlib,3,pass,
+zarrjl,zarrsjl,zlib,3,pass,
+zarrsjl,zarrjl,zlib,3,write_fail,Unknown compressor: zlib
+zarrsjl,zarrsjl,zlib,3,write_fail,Unknown compressor: zlib

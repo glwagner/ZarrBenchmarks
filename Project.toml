@@ -1,0 +1,9 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Zarr = "0a941bbe-ad1d-11e8-39d9-ab76183a1d99"
+Zarrs = "8a40563a-1bc2-47cb-b703-d0ff270a35b4"
+
+[compat]
+BenchmarkTools = "1.8.0"
+julia = "1.10"

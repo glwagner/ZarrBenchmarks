@@ -1,0 +1,24 @@
+# Local clones of the libraries under benchmark (kept outside Git so we can
+# rebuild from upstream tags rather than tracking commit pins).
+Zarr.jl/
+Zarrs.jl/
+zarrs-rust/
+
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+.JuliaLineEdit_history
+
+# macOS
+.DS_Store
+
+# scratch dirs that bench scripts create under /tmp via mktempdir() should
+# never appear here, but just in case:
+scratch/
+*.zarr/
+
+# Result artifacts that are too big to commit (we commit a small curated set
+# below). Anything matching *.tmp.csv or *.tmp.png stays local.
+results/*.tmp.csv
+results/*.tmp.png
