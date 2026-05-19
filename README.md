@@ -176,6 +176,17 @@ generalising.
    **compressed-write CPU cost** is broadly representative; the **read
    bandwidth** with compression is artificially boosted because the
    chunk files we're reading are tiny.
+
+   This matters a lot for interpreting the headline: with realistic data on
+   a fast local SSD, **compression usually makes writes slower**, not faster.
+   The wall-time arithmetic is roughly `T_compress + T_disk(N/ratio)` vs
+   `T_disk(N)`; with zstd at ~500 MB/s single-core CPU on a 1+ GiB/s store
+   and a realistic 3× ratio, compressed writes lose by a wide margin.
+   Compression starts paying off when (a) the destination is a slow store
+   (S3, NFS, spinning disk) where bytes-on-wire dominates, (b) the same
+   data will be re-read many times from a warm cache, or (c) the
+   compression ratio is exceptional. None of those applied here, so don't
+   read the "zstd is competitive with uncompressed" result as general.
 2. **APFS write-back caching distorts small writes.** A 192 GB RAM machine
    has plenty of dirty-page budget. We `fsync` all chunk files at close
    to force a real flush, which is included in the wall-time, but small
