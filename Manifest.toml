@@ -1620,15 +1620,17 @@ version = "1.6.0+0"
 
 [[deps.Zarr]]
 deps = ["Blosc", "CRC32c", "ChunkCodecCore", "ChunkCodecLibZlib", "ChunkCodecLibZstd", "DataStructures", "DateTimes64", "Dates", "DiskArrays", "HTTP", "JSON", "OffsetArrays", "OpenSSL", "Pkg", "URIs", "ZipArchives"]
-path = "Zarr.jl"
+path = "/Users/gregorywagner/Projects/Zarr.jl-propB"
 uuid = "0a941bbe-ad1d-11e8-39d9-ab76183a1d99"
 version = "0.10.0"
 
     [deps.Zarr.extensions]
     ZarrAWSS3Ext = "AWSS3"
+    ZarrZarrsStoreExt = "Zarrs"
 
     [deps.Zarr.weakdeps]
     AWSS3 = "1c724243-ef5b-51ab-93f4-b0a88ac62a95"
+    Zarrs = "8a40563a-1bc2-47cb-b703-d0ff270a35b4"
 
 [[deps.Zarrs]]
 deps = ["DiskArrays", "JSON"]

@@ -36,16 +36,27 @@ end
 
 function zarrjl_open_write(w::Workload, path::AbstractString)
     isdir(path) && rm(path; recursive=true, force=true)
-    # Start with the array at full size — matches the spec'd workload "append Nt frames".
-    # We use the same allocation pattern as Oceananigans' growing-time-axis: create
-    # with Nt = w.Nt up-front (cheap on disk — no chunk files written until data is set).
     compressor = zarrjl_compressor(w.codec, w.codec_level)
-    z = Zarr.zcreate(Float32, w.Nx, w.Ny, w.Nz, w.Nt;
-        path = path,
-        chunks = w.chunk,
-        compressor = compressor,
-        fill_value = 0f0,
-    )
+    if get(ENV, "ZS_USE_ZARRS_STORE", "0") == "1"
+        # Proposal B: use the ZarrsStore extension as the storage backend.
+        ext = Base.get_extension(Zarr, :ZarrZarrsStoreExt)
+        ext === nothing && error("ZarrZarrsStoreExt not loaded — needs Zarr.jl-propB + Zarrs.jl")
+        ZarrsStore = ext.ZarrsStore
+        mkpath(path)
+        store = ZarrsStore(path)
+        z = Zarr.zcreate(Float32, store, w.Nx, w.Ny, w.Nz, w.Nt;
+            chunks = w.chunk,
+            compressor = compressor,
+            fill_value = 0f0,
+        )
+    else
+        z = Zarr.zcreate(Float32, w.Nx, w.Ny, w.Nz, w.Nt;
+            path = path,
+            chunks = w.chunk,
+            compressor = compressor,
+            fill_value = 0f0,
+        )
+    end
     return ZarrJlHandle(z, String(path), w.Nx, w.Ny, w.Nz)
 end
 
@@ -62,7 +73,14 @@ function zarrjl_close_write(h::ZarrJlHandle)
 end
 
 function zarrjl_open_read(w::Workload, path::AbstractString)
-    z = Zarr.zopen(path, "r")
+    if get(ENV, "ZS_USE_ZARRS_STORE", "0") == "1"
+        ext = Base.get_extension(Zarr, :ZarrZarrsStoreExt)
+        ext === nothing && error("ZarrZarrsStoreExt not loaded")
+        ZarrsStore = ext.ZarrsStore
+        z = Zarr.zopen(ZarrsStore(path), "r")
+    else
+        z = Zarr.zopen(path, "r")
+    end
     return ZarrJlHandle(z, String(path), w.Nx, w.Ny, w.Nz)
 end
 

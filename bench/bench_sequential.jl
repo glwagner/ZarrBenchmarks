@@ -214,7 +214,9 @@ end
 # Main sweep
 # ---------------------------------------------------------------------------
 
-isfile(OUT_CSV) && rm(OUT_CSV)
+if get(ENV, "ZS_APPEND", "0") == "0"
+    isfile(OUT_CSV) && rm(OUT_CSV)
+end
 header = ["backend", "codec", "Nx", "Ny", "Nz", "Nt",
           "total_bytes", "on_disk_bytes",
           "repeat", "write_sec", "read_sec",
@@ -261,9 +263,14 @@ for (Nx, Ny, Nz, Nt) in SIZES
             rmbps = (total / 1_048_576) / rmed
             @printf "write %.3fs (%.1f MiB/s)  read %.3fs (%.1f MiB/s)  on_disk=%s\n" wmed wmbps rmed rmbps fmt_bytes(result.on_disk)
 
+            # Relabel zarrjl rows if a per-run variant label was passed in.
+            # Used by the 4-way comparison (baseline / propA / propB / zarrs)
+            # so the CSV can be merged across subprocess runs.
+            label = backend == "zarrjl" ? get(ENV, "ZS_ZARRJL_LABEL", "zarrjl") : backend
+
             for r in 1:REPEATS
                 csv_append!(OUT_CSV, header, Any[
-                    backend, codec, Nx, Ny, Nz, Nt,
+                    label, codec, Nx, Ny, Nz, Nt,
                     total, result.on_disk,
                     r,
                     result.write_secs[r],
