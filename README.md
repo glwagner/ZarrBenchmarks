@@ -89,23 +89,27 @@ Per-size median throughput, codec **none** (uncompressed) — MiB/s:
 
 | Size | opt Zarr.jl v3 (W) | Zarrs.jl (W) | W ratio | opt Zarr.jl v3 (R) | Zarrs.jl (R) | R ratio |
 |---|---:|---:|---:|---:|---:|---:|
-| 12.5 MiB | 382 | 360 | 1.06× | 1056 | 1879 | 0.56× |
-| 50.0 MiB | 1489 | 931 | 1.60× | 1509 | 2418 | 0.62× |
-| 100 MiB | 2331 | 1145 | 2.04× | 1608 | 2122 | 0.76× |
-| 200 MiB | 2974 | 1282 | 2.32× | 1037 | 2177 | 0.48× |
-| 400 MiB | 3577 | 1075 | 3.33× | 1484 | 2367 | 0.63× |
-| 800 MiB | 3709 | 1285 | 2.89× | 1613 | 1736 | 0.93× |
-| 1.6 GiB | 3727 | 1253 | 2.97× | 1517 | 1962 | 0.77× |
-| 1.2 GiB | 3828 | 1346 | 2.84× | 1526 | 1855 | 0.82× |
-| 3.1 GiB | 3744 | 1253 | 2.99× | 1664 | 1977 | 0.84× |
+| 12.5 MiB | 382 | 385 | 0.99× | 1373 | 1954 | 0.70× |
+| 50.0 MiB | 996 | 944 | 1.06× | 1680 | 2233 | 0.75× |
+| 100 MiB | 1924 | 1185 | 1.62× | 1800 | 2104 | 0.86× |
+| 200 MiB | 2866 | 1296 | 2.21× | 2010 | 2215 | 0.91× |
+| 400 MiB | 3396 | 1245 | 2.73× | 970 | 1054 | 0.92× |
+| 800 MiB | 3370 | 1242 | 2.71× | 1197 | 1398 | 0.86× |
+| 1.2 GiB | 4043 | 1330 | 3.04× | 1288 | 1566 | 0.82× |
+| 1.6 GiB | 3854 | 1330 | 2.90× | 1332 | 1725 | 0.77× |
+| 3.1 GiB | 4029 | 1260 | 3.20× | 1516 | 1866 | 0.81× |
+
+Numbers regenerated on branch `glw/zarr-v3-fullchunk`, with Zarr pinned via
+`[sources]` in `Project.toml` to `experiments/Zarr.jl-v3-fullchunk` (branch
+`glw/v3-fullchunk-fastpath-test`).
 
 Reading this table:
 
-1. **Optimized Zarr.jl v3 writes beat Zarrs.jl at every swept size.**
-   Write geomean is 2.32× faster; median ratio is 2.84× faster. Large
-   full-chunk writes hold around 3.7-3.8 GiB/s.
+1. **Optimized Zarr.jl v3 writes match or beat Zarrs.jl at every swept size.**
+   Write geomean is 2.10× faster; median ratio is 2.71× faster. Large
+   full-chunk writes hold around 3.4-4.0 GiB/s, peaking near 4 GiB/s.
 2. **Zarrs.jl still wins reads overall.** Optimized Zarr.jl v3 read
-   throughput is 0.70× of Zarrs.jl by geomean, so read-side parity still
+   throughput is 0.82× of Zarrs.jl by geomean, so read-side parity still
    needs separate work.
 3. **The main v3 write gap was not storage.** The exact-full-chunk path
    removes old-chunk reads, scratch-buffer allocation, user-buffer →

@@ -1620,7 +1620,7 @@ version = "1.6.0+0"
 
 [[deps.Zarr]]
 deps = ["Blosc", "CRC32c", "ChunkCodecCore", "ChunkCodecLibZlib", "ChunkCodecLibZstd", "DataStructures", "DateTimes64", "Dates", "DiskArrays", "HTTP", "JSON", "OffsetArrays", "OpenSSL", "Pkg", "URIs", "ZipArchives"]
-path = "Zarr.jl"
+path = "experiments/Zarr.jl-v3-fullchunk"
 uuid = "0a941bbe-ad1d-11e8-39d9-ab76183a1d99"
 version = "0.10.0"
 
