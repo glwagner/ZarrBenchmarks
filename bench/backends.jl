@@ -37,8 +37,8 @@ end
 function zarrjl_open_write(w::Workload, path::AbstractString)
     isdir(path) && rm(path; recursive=true, force=true)
     compressor = zarrjl_compressor(w.codec, w.codec_level)
+    zfmt = parse(Int, get(ENV, "ZS_ZARR_FORMAT", "2"))
     if get(ENV, "ZS_USE_ZARRS_STORE", "0") == "1"
-        # Proposal B: use the ZarrsStore extension as the storage backend.
         ext = Base.get_extension(Zarr, :ZarrZarrsStoreExt)
         ext === nothing && error("ZarrZarrsStoreExt not loaded — needs Zarr.jl-propB + Zarrs.jl")
         ZarrsStore = ext.ZarrsStore
@@ -48,6 +48,7 @@ function zarrjl_open_write(w::Workload, path::AbstractString)
             chunks = w.chunk,
             compressor = compressor,
             fill_value = 0f0,
+            zarr_format = zfmt,
         )
     else
         z = Zarr.zcreate(Float32, w.Nx, w.Ny, w.Nz, w.Nt;
@@ -55,6 +56,7 @@ function zarrjl_open_write(w::Workload, path::AbstractString)
             chunks = w.chunk,
             compressor = compressor,
             fill_value = 0f0,
+            zarr_format = zfmt,
         )
     end
     return ZarrJlHandle(z, String(path), w.Nx, w.Ny, w.Nz)

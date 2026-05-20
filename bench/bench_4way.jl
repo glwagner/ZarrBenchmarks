@@ -26,10 +26,16 @@ zarrjl_propB    = "/Users/gregorywagner/Projects/Zarr.jl-propB"
 
 # Variants. The "developed_path" gets Pkg.develop'd into the bench env
 # before each subprocess runs the sequential bench.
+# Sweep both V2 (Zarr.jl default) and V3 (Zarrs.jl default + Proposal B
+# target) so the comparison is apples-to-apples. The baseline run still
+# also picks up the mmap/raw/zarrsjl baselines (zarrsjl is V3 either way).
 variants = [
-    (label = "zarrjl_baseline", developed_path = zarrjl_baseline, backends = "mmap,raw,zarrjl,zarrsjl"),
-    (label = "zarrjl_propA",    developed_path = zarrjl_propA,    backends = "zarrjl"),
-    (label = "zarrjl_propB",    developed_path = zarrjl_propB,    backends = "zarrjl"),
+    (label = "zarrjl_baseline_v2", developed_path = zarrjl_baseline, backends = "mmap,raw,zarrjl,zarrsjl", zarr_format = "2"),
+    (label = "zarrjl_baseline_v3", developed_path = zarrjl_baseline, backends = "zarrjl",                  zarr_format = "3"),
+    (label = "zarrjl_propA_v2",    developed_path = zarrjl_propA,    backends = "zarrjl",                  zarr_format = "2"),
+    (label = "zarrjl_propA_v3",    developed_path = zarrjl_propA,    backends = "zarrjl",                  zarr_format = "3"),
+    (label = "zarrjl_propB_v2",    developed_path = zarrjl_propB,    backends = "zarrjl",                  zarr_format = "2"),
+    (label = "zarrjl_propB_v3",    developed_path = zarrjl_propB,    backends = "zarrjl",                  zarr_format = "3"),
 ]
 
 # baseline runs ALL backends (mmap/raw/zarrsjl numbers come from there);
@@ -61,11 +67,9 @@ for v in variants
     env["ZS_CODECS"]       = "none"
     env["JULIA_NUM_THREADS"] = "1"
     env["RAYON_NUM_THREADS"] = "1"
-    # First variant overwrites; subsequent ones append.
     env["ZS_APPEND"] = (v === first(variants)) ? "0" : "1"
-    # Proposal B variant routes Zarr.jl writes through the ZarrsStore
-    # extension instead of DirectoryStore.
-    env["ZS_USE_ZARRS_STORE"] = v.label == "zarrjl_propB" ? "1" : "0"
+    env["ZS_USE_ZARRS_STORE"] = startswith(v.label, "zarrjl_propB") ? "1" : "0"
+    env["ZS_ZARR_FORMAT"] = v.zarr_format
 
     bench_script = joinpath(@__DIR__, "bench_sequential.jl")
     cmd_bench = `$julia_bin --project=$project_dir -t 1 $bench_script $out_csv`

@@ -72,13 +72,81 @@ used a sawtooth that compressed ~140×; that result was misleading and has
 been retired.) See [`bench/common.jl`](bench/common.jl) for the generator,
 and the "Why bitround?" note below.
 
-### Throughput vs data size
+### Headline: optimized Zarr.jl v3 vs Zarrs.jl
+
+The headline result is now Zarr v3, uncompressed, one full chunk per timestep.
+`Zarr.jl` here is an experimental optimization branch with:
+
+1. V3 `BytesCodec` bulk-copy encode/decode for native-endian dense arrays.
+2. A direct exact-full-chunk overwrite path that encodes the input chunk and
+   calls `store_writechunk` without the partial-write scratch-buffer path.
+
+The branch preserves V3 fill-chunk elision semantics and passed
+`test/v3_codecs.jl` (`182/182`). Raw CSV:
+[`results/v3_optimized_vs_zarrs_full.csv`](results/v3_optimized_vs_zarrs_full.csv).
+
+Per-size median throughput, codec **none** (uncompressed) — MiB/s:
+
+| Size | opt Zarr.jl v3 (W) | Zarrs.jl (W) | W ratio | opt Zarr.jl v3 (R) | Zarrs.jl (R) | R ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| 12.5 MiB | 382 | 360 | 1.06× | 1056 | 1879 | 0.56× |
+| 50.0 MiB | 1489 | 931 | 1.60× | 1509 | 2418 | 0.62× |
+| 100 MiB | 2331 | 1145 | 2.04× | 1608 | 2122 | 0.76× |
+| 200 MiB | 2974 | 1282 | 2.32× | 1037 | 2177 | 0.48× |
+| 400 MiB | 3577 | 1075 | 3.33× | 1484 | 2367 | 0.63× |
+| 800 MiB | 3709 | 1285 | 2.89× | 1613 | 1736 | 0.93× |
+| 1.6 GiB | 3727 | 1253 | 2.97× | 1517 | 1962 | 0.77× |
+| 1.2 GiB | 3828 | 1346 | 2.84× | 1526 | 1855 | 0.82× |
+| 3.1 GiB | 3744 | 1253 | 2.99× | 1664 | 1977 | 0.84× |
+
+Reading this table:
+
+1. **Optimized Zarr.jl v3 writes beat Zarrs.jl at every swept size.**
+   Write geomean is 2.32× faster; median ratio is 2.84× faster. Large
+   full-chunk writes hold around 3.7-3.8 GiB/s.
+2. **Zarrs.jl still wins reads overall.** Optimized Zarr.jl v3 read
+   throughput is 0.70× of Zarrs.jl by geomean, so read-side parity still
+   needs separate work.
+3. **The main v3 write gap was not storage.** The exact-full-chunk path
+   removes old-chunk reads, scratch-buffer allocation, user-buffer →
+   scratch-buffer copies, and channel handoff for the common
+   full-timestep-write case.
+
+### Appendix: Zarr.jl-only v2 vs v3
+
+This table keeps the Zarr.jl comparison separate from Zarrs.jl. `PR #272 v2`
+and `PR #272 v3` use the branch with the V2 `NoCompressor` bulk-copy path and
+shared scratch-buffer allocation improvements. `opt v3` adds the V3
+`BytesCodec` and exact-full-chunk optimizations described above.
+
+Per-size median throughput, codec **none** (uncompressed) — MiB/s:
+
+| Size | PR #272 v2 (W) | PR #272 v3 (W) | opt v3 (W) | opt v3 / v2 (W) | PR #272 v2 (R) | PR #272 v3 (R) | opt v3 (R) | opt v3 / v2 (R) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 12.5 MiB | 619 | 306 | 382 | 0.62× | 1268 | 1086 | 1056 | 0.83× |
+| 50.0 MiB | 1044 | 640 | 1489 | 1.43× | 1482 | 1127 | 1509 | 1.02× |
+| 100 MiB | 931 | 710 | 2331 | 2.50× | 1501 | 369 | 1608 | 1.07× |
+| 200 MiB | 1105 | 851 | 2974 | 2.69× | 1348 | 610 | 1037 | 0.77× |
+| 400 MiB | 1333 | 909 | 3577 | 2.68× | 961 | 912 | 1484 | 1.54× |
+| 800 MiB | 1013 | 741 | 3709 | 3.66× | 1203 | 852 | 1613 | 1.34× |
+| 1.6 GiB | 1257 | 893 | 3727 | 2.96× | 1233 | 959 | 1517 | 1.23× |
+| 1.2 GiB | 1082 | 791 | 3828 | 3.54× | 1155 | 851 | 1526 | 1.32× |
+| 3.1 GiB | 1137 | 852 | 3744 | 3.29× | 1324 | 1072 | 1664 | 1.26× |
+
+The small-size cases are dominated by fixed overhead and noise. From 50 MiB
+up, optimized v3 writes are faster than the optimized v2 path, and from
+400 MiB up they are roughly 2.7-3.7× faster.
+
+### Historical baseline: original throughput vs data size
 
 ![Throughput vs data size](results/throughput_vs_size.png)
 
-Median MiB/s for sequential write and read, log-log. Solid = uncompressed,
-dashed = zstd level 3. Mmap and raw are uncompressed only. Data generation
-happens **outside** the timed loop (pre-allocated, one buffer per timestep).
+The following plot and tables are the older baseline/codec sweep, before the
+V3 optimization branch above. They are still useful for codec behavior,
+compression tradeoffs, and mmap/raw anchors. Median MiB/s for sequential write
+and read, log-log. Solid = uncompressed, dashed = zstd level 3. Mmap and raw
+are uncompressed only. Data generation happens **outside** the timed loop
+(pre-allocated, one buffer per timestep).
 
 Per-size median throughput, codec **none** (uncompressed) — MiB/s:
 
@@ -103,7 +171,7 @@ Codec **zstd level 3** — MiB/s:
 | 1.6 GiB | 152 | 150 | 559 | 547 | 853 MiB | 1.88× |
 | 3.1 GiB | 151 | **167** | 565 | 610 | 1.67 GiB | 1.88× |
 
-Key reads of these tables:
+Key reads of the historical tables:
 
 1. **Uncompressed:** Zarrs.jl writes are ~2.5–2.8× Zarr.jl across the sweep
    (~1.2 GiB/s vs ~0.45 GiB/s on large arrays). Reads: Zarrs.jl ~1.3–1.7×.
@@ -260,34 +328,24 @@ generalising.
 
 ## Takeaways
 
-- **Uncompressed sequential write:** Zarrs.jl is consistently faster
-  than Zarr.jl — roughly **2.5–2.8× faster at sizes ≥ 50 MiB**.
-  Zarrs.jl's per-write Float32 throughput sits around 1.2 GiB/s on
-  large arrays vs. Zarr.jl's ~450 MiB/s plateau, and is within ~30%
-  of mmap (~1.7 GiB/s). Zarr.jl barely scales with array size; Zarrs.jl
-  ramps from ~400 to ~1300 MiB/s.
-- **Uncompressed sequential read:** Zarrs.jl is 1.3–1.7× Zarr.jl across
-  the sweep (~2 GiB/s vs. ~1.4 GiB/s). Both are 3–4× slower than mmap
-  reads (~5.5 GiB/s with warm page cache).
-- **With realistic zstd-3 data**, the two libraries collapse to
-  essentially identical numbers — **~150 MiB/s write, ~560 MiB/s read,
-  to within 1%**. Compression CPU is the bottleneck and both wrappers
-  call the same `libzstd`. The FFI/Rust vs. pure-Julia difference is
-  invisible here.
-- **Compression slows writes ~3× and reads ~2.5×** on this local NVMe.
-  The 1.85× byte reduction does not pay for the zstd CPU cost when the
-  underlying store can do 1+ GiB/s. Compression starts paying off on
-  slow stores (S3, NFS, spinning disk) or when the same data is
-  re-read many times.
-- **Cross-library round-trip is essentially solid** for codec `none`,
-  `blosc`, and zstd in both v2 and v3, in both directions, *except*
-  Zarr.jl-written-v3-zstd → Zarrs.jl-read (the `chunksize` config
-  mismatch noted above). `zlib` is Zarr.jl-only.
-- **Threading helps uncompressed Zarrs.jl modestly** (909 → 1238 MiB/s
-  writes, 1→16 threads) but does nothing for uncompressed Zarr.jl or
-  for either library under zstd-3 on the per-timestep write pattern.
-  zstd-3 at chunk granularity is sequential; both libraries would
-  parallelize differently if you handed them many chunks per call.
+- **The headline result is V3 write performance.** With the experimental V3
+  optimizations, Zarr.jl writes full uncompressed chunks faster than Zarrs.jl
+  at every swept size: 2.32× faster by write geomean, 2.84× by median ratio.
+- **The large V3 write win comes from avoiding generic partial-write work.**
+  Exact full-chunk overwrites do not need old-chunk reads, scratch buffers,
+  user-buffer copies, or channel handoff.
+- **V3 reads improved, but Zarrs.jl still wins reads overall.** Optimized
+  Zarr.jl v3 is 0.70× of Zarrs.jl by read geomean. The read path needs its own
+  optimization pass if parity matters.
+- **Relative to Zarr.jl v2, optimized v3 is now the better uncompressed write
+  path for medium and large chunks.** From 400 MiB total data upward, the
+  optimized v3 write path is roughly 2.7-3.7× faster than the PR #272 v2 path.
+- **The older zstd and threading conclusions are still useful, but historical.**
+  zstd-3 remains codec-bound in the baseline sweep, while the V3 optimization
+  work here targeted uncompressed full-chunk writes.
+- **Cross-library round-trip remains mostly solid** for codec `none`, `blosc`,
+  and zstd in both v2 and v3, except the Zarr.jl-written-v3-zstd → Zarrs.jl
+  `chunksize` metadata mismatch noted above. `zlib` support remains uneven.
 
 ## How to reproduce
 

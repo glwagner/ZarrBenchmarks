@@ -27,25 +27,33 @@ function read_csv(path::AbstractString)
 end
 
 const COLOR = Dict(
-    "mmap"            => :black,
-    "raw"             => :gray60,
-    "zarrjl_baseline" => :tomato,
-    "zarrjl_propA"    => :darkgreen,
-    "zarrjl_propB"    => :darkorange,
-    "zarrsjl"         => :steelblue,
+    "mmap"                 => :black,
+    "raw"                  => :gray60,
+    "zarrjl_baseline_v2"   => :tomato,
+    "zarrjl_baseline_v3"   => :firebrick4,
+    "zarrjl_propA_v2"      => :seagreen3,
+    "zarrjl_propA_v3"      => :darkgreen,
+    "zarrjl_propB_v2"      => :tan2,
+    "zarrjl_propB_v3"      => :saddlebrown,
+    "zarrsjl"              => :steelblue,
 )
 const LABEL = Dict(
-    "mmap"            => "Mmap (theoretical)",
-    "raw"             => "Raw write/read",
-    "zarrjl_baseline" => "Zarr.jl (baseline)",
-    "zarrjl_propA"    => "Zarr.jl + Prop A (bulk encode)",
-    "zarrjl_propB"    => "Zarr.jl + Prop B (ZarrsStore)",
-    "zarrsjl"         => "Zarrs.jl (native)",
+    "mmap"                 => "Mmap (theoretical)",
+    "raw"                  => "Raw write/read",
+    "zarrjl_baseline_v2"   => "Zarr.jl baseline (V2)",
+    "zarrjl_baseline_v3"   => "Zarr.jl baseline (V3)",
+    "zarrjl_propA_v2"      => "Zarr.jl + Prop A (V2)",
+    "zarrjl_propA_v3"      => "Zarr.jl + Prop A (V3)",
+    "zarrjl_propB_v2"      => "Zarr.jl + Prop B (V2)",
+    "zarrjl_propB_v3"      => "Zarr.jl + Prop B (V3)",
+    "zarrsjl"              => "Zarrs.jl (V3 native)",
 )
 
-# Order in which lines are drawn (and appear in legend)
-const ORDER = ["mmap", "raw", "zarrjl_baseline", "zarrjl_propA",
-               "zarrjl_propB", "zarrsjl"]
+const ORDER = ["mmap", "raw",
+               "zarrjl_baseline_v2", "zarrjl_baseline_v3",
+               "zarrjl_propA_v2", "zarrjl_propA_v3",
+               "zarrjl_propB_v2", "zarrjl_propB_v3",
+               "zarrsjl"]
 
 function aggregate(rows, metric)
     bag = Dict{Tuple{String,Int}, Vector{Float64}}()
